@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+    <metadata>
+        <id>opennetcf-restconnector</id>
+        <version>1.0.17150.0</version>
+        <title>OpenNETCF REST Connector</title>
+        <authors>Chris Tacke</authors>
+        <requireLicenseAcceptance>false</requireLicenseAcceptance>
+        <description>A lightweight library for simplifying making REST calls</description>
+
+    <dependencies>
+      <group>
+        <dependency id="com.opennetcf.extensions.pcl" version="1.0.17150"/>
+      </group>
+    </dependencies>
+    </metadata>
+  <files>
+    <!-- Portables -->
+    <file src=".\OpenNETCF.RestConnector\bin\Release\OpenNETCF.RestConnector.dll" target="lib\portable-net45+netcore45+wpa81+wp8" />
+
+    <!-- Android -->
+    <file src=".\OpenNETCF.RestConnector\bin\Release\OpenNETCF.RestConnector.dll" target="lib\monoandroid+monotouch" />
+
+    <!-- iOS -->
+    <file src=".\OpenNETCF.RestConnector\bin\Release\OpenNETCF.RestConnector.dll" target="lib\Xamarin.iOS10" />
+  </files>
+</package>
