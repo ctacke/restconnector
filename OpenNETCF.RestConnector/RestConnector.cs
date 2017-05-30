@@ -43,6 +43,8 @@ namespace OpenNETCF
         private HttpClientHandler m_credentialHandler;
         private HttpClient m_client;
 
+        public bool ThrowOnConnectionFailure { get; set; }
+
         public RestConnector(string endpointAddress)
         {
             Validate
@@ -115,6 +117,7 @@ namespace OpenNETCF
             }
 
             m_client.BaseAddress = endpointAddress;
+            ThrowOnConnectionFailure = false;
         }
 
         protected override void ReleaseManagedResources()
@@ -162,6 +165,11 @@ namespace OpenNETCF
             return AsyncHelper.RunSync(() => GetAsync(directory, timeout));
         }
 
+        /*
+        public async Task<T> GetObject<T>(string directory, int timeout)
+        {
+        }
+        */
         public async Task<string> GetAsync(string directory, int timeout)
         {
             var token = new CancellationToken();
@@ -169,7 +177,16 @@ namespace OpenNETCF
             if (await Task.WhenAny(task, Task.Delay(timeout, token)) == task)
             {
                 // the inner await will throw if we've been cancelled
-                return await task;
+                try
+                {
+                    return await task;
+                }
+                catch (Exception ex)
+                {
+                    if (ThrowOnConnectionFailure) throw ex;
+
+                    return null;
+                }
             }
             else
             {
