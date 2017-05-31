@@ -4,7 +4,7 @@
 // - This software is licensed under the MIT shared source license.
 // - The "official" source code for this project is maintained at https://github.com/ctacke/restconnector
 //
-// Copyright (c) 2010 OpenNETCF Consulting
+// Copyright (c) 2017 OpenNETCF Consulting
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this software and 
 // associated documentation files (the "Software"), to deal in the Software without restriction, 
@@ -34,14 +34,17 @@ using System.Threading;
 using System.Xml.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
+using System.Net.Http.Headers;
+using System.Collections;
 
 namespace OpenNETCF
 {
-    public class RestConnector : DisposableBase
+    public partial class RestConnector : DisposableBase
     {
         private object m_syncRoot = new object();
         private HttpClientHandler m_credentialHandler;
         private HttpClient m_client;
+        private Accept m_contentType;
 
         public bool ThrowOnConnectionFailure { get; set; }
 
@@ -103,6 +106,20 @@ namespace OpenNETCF
                 .ParameterIsNotNull(endpointAddress, "endpointAddress")
                 .Check();
 
+            m_contentType = new Accept();
+            m_contentType.Changed += delegate
+            {
+                m_client.DefaultRequestHeaders.Clear();
+                foreach (var a in this.Accept.ContentType)
+                {
+                    m_client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue(a));
+                }
+                foreach (var e in this.Accept.Encoding)
+                {
+                    m_client.DefaultRequestHeaders.AcceptEncoding.Add(new StringWithQualityHeaderValue(e));
+                }
+            };
+
             if (username.IsNullOrWhiteSpace())
             {
                 m_client = new HttpClient();
@@ -127,6 +144,11 @@ namespace OpenNETCF
             {
                 m_client.Dispose();
             }
+        }
+
+        public Accept Accept
+        {
+            get { return m_contentType; }
         }
 
         public int Port
@@ -155,85 +177,12 @@ namespace OpenNETCF
             }
         }
 
-        public string Get(string directory)
-        {
-            return Get(directory, Timeout.Infinite);
-        }
-
-        public string Get(string directory, int timeout)
-        {
-            return AsyncHelper.RunSync(() => GetAsync(directory, timeout));
-        }
-
-        /*
-        public async Task<T> GetObject<T>(string directory, int timeout)
-        {
-        }
-        */
-        public async Task<string> GetAsync(string directory, int timeout)
-        {
-            var token = new CancellationToken();
-            var task = m_client.GetStringAsync(directory);
-            if (await Task.WhenAny(task, Task.Delay(timeout, token)) == task)
-            {
-                // the inner await will throw if we've been cancelled
-                try
-                {
-                    return await task;
-                }
-                catch (Exception ex)
-                {
-                    if (ThrowOnConnectionFailure) throw ex;
-
-                    return null;
-                }
-            }
-            else
-            {
-                //cancelled
-                m_client.CancelPendingRequests();
-                return null;
-            }
-        }
-
-        public byte[] GetBytes(string directory, int timeout)
-        {
-            return AsyncHelper.RunSync(() => GetBytesAsync(directory, timeout));
-        }
-
-        public async Task<byte[]> GetBytesAsync(string directory, int timeout)
-        {
-            var token = new CancellationToken();
-            var task = m_client.GetByteArrayAsync(directory);
-            if (await Task.WhenAny(task, Task.Delay(timeout, token)) == task)
-            {
-                // the inner await will throw if we've been cancelled
-                return await task;
-            }
-            else
-            {
-                //cancelled
-                m_client.CancelPendingRequests();
-                return null;
-            }
-        }
-
-        private async Task<string> SendDataAsync(string method, string directory, int timeout)
-        {
-            return await SendDataAsync(method, directory, (string)null, null, timeout);
-        }
-
-        private async Task<string> SendDataAsync(string method, string directory, string data)
-        {
-            return await SendDataAsync(method, directory, data, null, Timeout.Infinite);
-        }
-
         private async Task<string> SendDataAsync(string method, string directory, byte[] data, string contentType, int timeout)
         {
             var content = new ByteArrayContent(data);
-            if (contentType != null)
+            if (!contentType.IsNullOrWhiteSpace())
             {
-                content.Headers.Add("content-type", contentType);
+                content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
             }
             return await SendDataAsync(method, directory, content, timeout);
         }
@@ -241,10 +190,11 @@ namespace OpenNETCF
         private async Task<string> SendDataAsync(string method, string directory, string data, string contentType, int timeout)
         {
             var content = new StringContent(data);
-            if (contentType != null)
+            if (!contentType.IsNullOrWhiteSpace())
             {
-                content.Headers.Add("content-type", contentType);
+                content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
             }
+
             return await SendDataAsync(method, directory, content, timeout);
         }
 
@@ -257,10 +207,61 @@ namespace OpenNETCF
             {
                 case "POST":
                     task = m_client.PostAsync(directory, content);
+                    break;
+                case "PUT":
+                    task = m_client.PutAsync(directory, content);
+                    break;
+                case "DELETE":
+                    // content is irrelevent in a D
+                    task = m_client.DeleteAsync(directory);
+                    break;
+                default:
+                    throw new NotSupportedException(string.Format("Verb {0} not supported", method.ToUpper()));
+            }
+
+            if (await Task.WhenAny(task, Task.Delay(timeout, token)) == task)
+            {
+                // the inner await will throw if we've been cancelled
+                try
+                {
+                    return await (await task).Content.ReadAsStringAsync();
+                }
+                catch (Exception ex)
+                {
+                    if (ThrowOnConnectionFailure) throw ex;
+                }
+                return null;
+            }
+            else
+            {
+                //cancelled
+                m_client.CancelPendingRequests();
+                return null;
+            }
+
+        }
+
+        private async Task<string> SendDataAsync2(string method, string directory, HttpContent content, int timeout)
+        {
+            Task<HttpResponseMessage> task;
+
+            CancellationToken token = new CancellationToken();
+            switch (method.ToUpper())
+            {
+                case "POST":
+                    task = m_client.PostAsync(directory, content);
                     if (await Task.WhenAny(task, Task.Delay(timeout, token)) == task)
                     {
                         // the inner await will throw if we've been cancelled
-                        return await (await task).Content.ReadAsStringAsync();
+                        try
+                        {
+                            return await (await task).Content.ReadAsStringAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            if (ThrowOnConnectionFailure) throw ex;
+                        }
+                        return null;
                     }
                     else
                     {
@@ -273,7 +274,15 @@ namespace OpenNETCF
                     if (await Task.WhenAny(task, Task.Delay(timeout, token)) == task)
                     {
                         // the inner await will throw if we've been cancelled
-                        return await (await task).Content.ReadAsStringAsync();
+                        try
+                        {
+                            return await (await task).Content.ReadAsStringAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            if (ThrowOnConnectionFailure) throw ex;
+                        }
+                        return null;
                     }
                     else
                     {
@@ -286,7 +295,17 @@ namespace OpenNETCF
                     if (await Task.WhenAny(task, Task.Delay(timeout, token)) == task)
                     {
                         // the inner await will throw if we've been cancelled
-                        return await (await task).Content.ReadAsStringAsync();
+                        // the inner await will throw if we've been cancelled
+                        try
+                        {
+                            return await (await task).Content.ReadAsStringAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            if (ThrowOnConnectionFailure) throw ex;
+                        }
+                        return null;
+
                     }
                     else
                     {
@@ -295,88 +314,8 @@ namespace OpenNETCF
                         return null;
                     }
                 default:
-                    throw new NotSupportedException();
+                    throw new NotSupportedException(string.Format("Verb {0} not supported", method.ToUpper()));
             }
-        }
-
-        public async Task<string> PostAsync(string directory, string data, string contentType, int timeout)
-        {
-            return await SendDataAsync("POST", directory, data, contentType, timeout);
-        }
-
-        public async Task<string> PostAsync(string directory, byte[] data, int timeout)
-        {
-            return  await SendDataAsync("POST", directory, null, timeout);
-        }
-
-        public string Post(string directory, byte[] data, int timeout)
-        {
-            return AsyncHelper.RunSync(() => PostAsync(directory, data, timeout));
-        }
-
-        public string Post(string directory, string data, string contentType, int timeout)
-        {
-            return AsyncHelper.RunSync(() => PostAsync(directory, data, contentType, timeout));
-        }
-
-        public string Post(string directory, string data, int timeout)
-        {
-            return Post(directory, data, null, timeout);
-        }
-
-        public string Post(string directory, XElement data, int timeout)
-        {
-            return Post(directory, data.ToString(), "text/xml", timeout);
-        }
-
-        public string Post(string directory, XElement data)
-        {
-            return Post(directory, data.ToString(), "text/xml", Timeout.Infinite);
-        }
-
-        public string Post(string directory, string data)
-        {
-            return AsyncHelper.RunSync(() => SendDataAsync("POST", directory, data));
-        }
-
-        public string Put(string directory, string data, string contentType, int timeout)
-        {
-            return AsyncHelper.RunSync(() => SendDataAsync("PUT", directory, data, contentType, timeout));
-        }
-
-        public string Put(string directory, string data, int timeout)
-        {
-            return Put(directory, data, null, timeout);
-        }
-
-        public string Put(string directory, XElement data, int timeout)
-        {
-            return Put(directory, data.ToString(), timeout);
-        }
-
-        public string Put(string directory, XElement data)
-        {
-            return Put(directory, data.ToString());
-        }
-
-        public string Put(string directory, string data)
-        {
-            return AsyncHelper.RunSync(() => SendDataAsync("PUT", directory, data));
-        }
-
-        public string Delete(string directory, int timeout)
-        {
-            return AsyncHelper.RunSync(() => SendDataAsync("DELETE", directory, timeout));
-        }
-
-        public string Delete(string directory)
-        {
-            return AsyncHelper.RunSync(() => SendDataAsync("DELETE", directory, null));
-        }
-
-        public string Delete(string directory, XElement data, int timeout)
-        {
-            return AsyncHelper.RunSync(() => SendDataAsync("DELETE", directory, data.ToString(), "text/xml", timeout));
         }
     }
 }

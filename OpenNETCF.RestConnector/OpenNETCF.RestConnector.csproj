@@ -35,7 +35,14 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="MimeType.cs" />
+    <Compile Include="ContentEncoding.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Accept.cs" />
+    <Compile Include="RestConnector - DELETE.cs" />
+    <Compile Include="RestConnector - PUT.cs" />
+    <Compile Include="RestConnector - POST.cs" />
+    <Compile Include="RestConnector - GET.cs" />
     <Compile Include="RestConnector.cs" />
   </ItemGroup>
   <ItemGroup>
