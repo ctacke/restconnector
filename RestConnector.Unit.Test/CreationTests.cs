@@ -34,6 +34,18 @@ namespace Unit.Test
         }
 
         [TestMethod]
+        public void CreateHttpNoCredsWithUri()
+        {
+            var address = new Uri("http://www.opennetcf.com/");
+            using (var rc = new RestConnector(address))
+            {
+                Assert.IsNotNull(rc);
+                Assert.IsTrue(rc.EndpointAddress == address.AbsoluteUri);
+                Assert.AreEqual(80, rc.Port);
+            }
+        }
+
+        [TestMethod]
         public void CreateWithAcceptContentType1()
         {
             var address = "http://www.opennetcf.com/";

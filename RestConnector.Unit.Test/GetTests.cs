@@ -9,6 +9,46 @@ namespace Unit.Test
     public class GetTests
     {
         [TestMethod]
+        public void GetOther()
+        {
+            var uri = "http://localhost:3000/";
+
+            using (var rc = new RestConnector(uri))
+            {
+                Assert.IsNotNull(rc);
+                rc.Accept.ContentType.Add(MimeType.Json);
+                var result = rc.GetString("/api/drivers");
+
+                Assert.IsNotNull(result);
+            }
+
+        }
+
+        [TestMethod]
+        public void GetJson()
+        {
+            var uri = "http://localhost:8080/";
+            var response = "{\"name\":\"value\"}";
+
+            using (var svr = new SimpleServer(uri, (request) =>
+            {
+                return response;
+            })
+            )
+            {
+                svr.Start();
+
+                using (var rc = new RestConnector(uri))
+                {
+                    Assert.IsNotNull(rc);
+                    var result = rc.GetString("/");
+
+                    Assert.AreEqual(response, result);
+                }
+            }
+        }
+
+        [TestMethod]
         public void GetNoCreds()
         {
             var uri = "http://localhost:8080/";

@@ -70,13 +70,18 @@ namespace OpenNETCF
         public async Task<string> GetStringAsync(string directory, int timeout)
         {
             var token = new CancellationToken();
-            var task = m_client.GetStringAsync(directory);
+//            var task = m_client.GetStringAsync(directory);
+            var task = m_client.GetAsync(directory);
+
             if (await Task.WhenAny(task, Task.Delay(timeout, token)) == task)
             {
                 // the inner await will throw if we've been cancelled
                 try
                 {
-                    return await task;
+                    var result = await task;
+                    var stream = await result.Content.ReadAsStreamAsync();
+                    var rdr = new StreamReader(stream);
+                    return await rdr.ReadToEndAsync();
                 }
                 catch (Exception ex)
                 {
